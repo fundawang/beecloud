@@ -1,0 +1,6 @@
+name = Beecloud
+description = Beecloud integrated payment service interface for drupal
+package = Payment
+core = 7.x
+version = 0.1
+

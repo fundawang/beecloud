@@ -1,0 +1,157 @@
+<?php
+function beecloud_init() {
+	drupal_add_css(
+		'//res.wx.qq.com/open/libs/weui/0.4.0/weui.min.css',
+		array(
+			'type' => 'external',
+		)
+	);
+}
+
+function beecloud_menu() {
+	$items=array();
+	$items['beecloud/offlinepay']=array(
+		'title' => 'Charge',
+		'page callback' => 'drupal_get_form',
+		'page arguments' => array('beecloud_offlinepay_form'),
+		'access callback' => TRUE,
+	);
+	return $items;
+}
+
+function beecloud_offlinepay_form($form, &$form_state) {
+	$form['item']=array(
+		'#title' => t('Charge item'),
+		'#required' => TRUE,
+		'#size' => NULL,
+		'#maxlength' => 20,
+		'#type' => 'textfield',
+		'#attributes' => array('class'=>array('weui_input')),
+		'#access' => !isset($form_state['storage']['waiting']),
+	);
+
+	$form['people']=array(
+		'#title' => t('Name'),
+		'#required' => TRUE,
+		'#size' => NULL,
+		'#maxlength' => 20,
+		'#type' => 'textfield',
+		'#attributes' => array('class'=>array('weui_input')),
+		'#access' => !isset($form_state['storage']['waiting']),
+	);
+
+	$form['amount']=array(
+		'#title' => t('Amount (Yuan)'),
+		'#required' => TRUE,
+		'#size' => NULL,
+		'#maxlength' => 20,
+		'#type' => 'textfield',
+		'#attributes' => array('class'=>array('weui_input')),
+		'#access' => !isset($form_state['storage']['waiting']),
+	);
+	
+	$form['auth_code']=array(
+		'#title' => t('Payment Code'),
+		'#required' => TRUE,
+		'#size' => NULL,
+		'#maxlength' => 20,
+		'#type' => 'textfield',
+		'#attributes' => array('class'=>array('weui_input')),
+		'#access' => !isset($form_state['storage']['waiting']),
+	);
+	
+	$form['submit']=array(
+		'#value' => t('Charge !'),
+		'#required' => TRUE,
+		'#type' => 'submit',
+		'#attributes' => array('class'=>array('weui_btn weui_btn_primary')),
+		'#access' => !isset($form_state['storage']['waiting']),
+	);
+	
+	$form['successmessage']=array(
+		'#markup' => sprintf('<div class="weui_msg"><div class="weui_icon_msg weui_icon_success"/><h2 class="weui_msg_title">%s</h2></div>', t('Charge Suceeded')),
+		'#access' => $form_state['storage']['waiting']===FALSE,
+	);
+	$form['ok']=array(
+		'#value' => t('OK'),
+		'#required' => TRUE,
+		'#type' => 'submit',
+		'#attributes' => array('class'=>array('weui_btn weui_btn_primary')),
+		'#submit' => array('beecloud_offlinepay_form_submit_ok'),
+		'#access' => $form_state['storage']['waiting']===FALSE,
+	);
+	
+	$form['query']=array(
+		'#value' => t('Query payment status'),
+		'#required' => TRUE,
+		'#type' => 'submit',
+		'#attributes' => array('class'=>array('weui_btn weui_btn_primary')),
+		'#submit' => array('beecloud_offlinepay_form_submit_query'),
+		'#access' => $form_state['storage']['waiting']===FALSE,
+	);
+
+	return $form;
+	
+}
+
+function beecloud_offlinepay_form_submit($form, &$form_state) {
+	$data=array();
+	$timestamp=time();
+
+	$data['app_id']='???????????????????';
+	$app_secret='???????????????????';
+
+	$data['timestamp']=$timestamp;
+	$data['app_sign']=md5($data['app_id'].$timestamp.$app_secret);
+
+	if(!isset($form_state['storage']['orderno'])) {
+		$data['channel']='WX_SCAN';
+		$data['total_fee']=(int)$form_state['values']['amount'];
+		$data['bill_no']=date('YmdHis').sprintf('%06d',rand(0,999999));
+		$data['title']=t('Charge @name for @item', array('@name'=>$form_state['values']['people'], '@item'=>$form_state['values']['item']));
+		$data['auth_code']=$form_state['values']['auth_code'];
+		
+		$url='https://apidynamic.beecloud.cn/2/rest/offline/bill';
+		$options=array(
+			'method' => 'POST',
+			'headers' => array('Content-Type' => 'application/json'),
+			'data' => json_encode($data, JSON_UNESCAPED_UNICODE),
+		);
+	} else {
+		$data['bill_no']=$form_state['storage']['orderno'];
+		$data['channel']=$form_state['storage']['channel'];
+
+		$url='https://apidynamic.beecloud.cn/2/rest/offline/bill/status';
+		$options=array(
+			'method' => 'POST',
+			'headers' => array('Content-Type' => 'application/json'),
+			'data' => json_encode($data, JSON_UNESCAPED_UNICODE),
+		);
+	}
+
+	$ret=drupal_http_request(
+		$url,
+		$options
+	);
+	
+	$result=json_decode($ret->data);
+
+	if($result->resultCode) {
+		drupal_set_message($result->err_detail,'error');
+	} else {
+		if($result->pay_result) {
+			$form_state['rebuild']=TRUE;
+			$form_state['storage']['waiting']=FALSE;
+		} else {
+			$form_state['rebuild']=TRUE;
+			$form_state['storage']['waiting']=TRUE;
+			$form_state['storage']['orderno']=$data['bill_no'];
+			$form_state['storage']['channel']=$data['channel'];
+		}
+	}
+}
+
+function beecloud_offlinepay_form_submit_ok($form, $form_state) {
+	
+}
+?>
