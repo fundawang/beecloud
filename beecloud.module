@@ -241,7 +241,7 @@ function beecloud_simple_webhook() {
 	echo 'success'; exit;
 }
 
-function beecloud_refund_helper($orderno, $amount) {
+function beecloud_refund_helper($orderno, $amount=0) {
 	$order=variable_get('order.'.$orderno);
 
 	$data=array();
@@ -252,7 +252,7 @@ function beecloud_refund_helper($orderno, $amount) {
 	$data['channel']=$order->channel_type;
 	$data['refund_no']=date('YmdHis').sprintf('%06d',rand(0,999999));
 	$data['bill_no']=$orderno;
-	$data['refund_fee']=$order->amount;
+	$data['refund_fee']=$amount?$amount:$order->amount;
 	$data['need_approval']=FALSE;
 	
 	$url='https://apidynamic.beecloud.cn/2/rest/refund';
