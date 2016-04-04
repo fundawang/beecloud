@@ -110,8 +110,8 @@ function beecloud_offlinepay_form_submit($form, &$form_state) {
 	$data=array();
 	$timestamp=time();
 
-	$data['app_id']='???????????????????';
-	$app_secret='???????????????????';
+	$data['app_id']=variable_get('beecloud_appid', '');
+	$app_secret=variable_get('beecloud_appsecret', '');
 
 	$data['timestamp']=$timestamp;
 	$data['app_sign']=md5($data['app_id'].$timestamp.$app_secret);
@@ -183,6 +183,14 @@ function beecloud_settings_form($form, $form_state) {
 		'#required' => TRUE,
 		'#default_value' => variable_get('beecloud_appsecret', ''),
 	);
+	$form['beecloud_mastersecret']=array(
+		'#type' => 'textfield',
+		'#size' => 40,
+		'#maxlength' => '36',
+		'#title' => 'Beecloud Master Secret',
+		'#required' => TRUE,
+		'#default_value' => variable_get('beecloud_mastersecret', ''),
+	);
 	return system_settings_form($form);
 }
 
@@ -202,12 +210,13 @@ function beecloud_button_js_helper($data, $button_id) {
 }
 
 function beecloud_simple_webhook_perm() {
-	if($_SERVER['method']=='POST') return TRUE;
+	if($_SERVER['REQUEST_METHOD']=='POST') return TRUE;
 	else return FALSE;
 }
 
 function beecloud_simple_webhook() {
 	$jsonStr = file_get_contents("php://input");
+
 	$msg = json_decode($jsonStr);
 	
 	$sign = md5(variable_get('beecloud_appid', '') . variable_get('beecloud_appsecret', '') . $msg->timestamp);
@@ -215,7 +224,7 @@ function beecloud_simple_webhook() {
 	
 	if (!$msg->tradeSuccess) exit();
 	$order=variable_get('order.'.$msg->transaction_id);
-	if (!$msg->transaction_fee!=$order->amount) {
+	if ($msg->transaction_fee!=$order->amount) {
 		watchdog('beecloud', 'Order %order was hacked by the amount of %amount.', array('%order'=>$msg->transaction_id, '%amount'=>$msg->transaction_fee), WATCHDOG_CRITICAL);
 		header('HTTP/1.0 400 Bad Request', 400);
 		exit();
@@ -228,6 +237,47 @@ function beecloud_simple_webhook() {
 			watchdog('beecloud', 'Order %order paid successful via %channel.', array('%order'=>$msg->transaction_id, '%channel'=>$msg->channel_type));
 			module_invoke_all('beecloud_webhook_paid', $order);
 			break;
+	}
+	echo 'success'; exit;
+}
+
+function beecloud_refund_helper($orderno, $amount) {
+	$order=variable_get('order.'.$orderno);
+
+	$data=array();
+	$timestamp=time();
+	$data['app_id']=variable_get('beecloud_appid', '');
+	$data['timestamp']=$timestamp;
+	$data['app_sign']=md5($data['app_id'].$timestamp.variable_get('beecloud_mastersecret', ''));
+	$data['channel']=$order->channel_type;
+	$data['refund_no']=date('YmdHis').sprintf('%06d',rand(0,999999));
+	$data['bill_no']=$orderno;
+	$data['refund_fee']=$order->amount;
+	$data['need_approval']=FALSE;
+	
+	$url='https://apidynamic.beecloud.cn/2/rest/refund';
+	$options=array(
+		'method' => 'POST',
+		'headers' => array('Content-Type' => 'application/json'),
+		'data' => json_encode($data, JSON_UNESCAPED_UNICODE),
+	);
+
+	$ret=drupal_http_request(
+		$url,
+		$options
+	);
+	
+	$result=json_decode($ret->data);
+
+	if($result->resultCode) {
+		watchdog('beecloud', '%order refund error: %error.', array('%order'=>$orderno, '%error'=>$result->error_detail), WATCHDOG_ERROR);
+		drupal_set_message(t('%order refund error: %error.', array('%order'=>$orderno, '%error'=>$result->error_detail)), 'error');
+		return FALSE;
+	} else {
+		if($result->pay_result) {
+			return TRUE;
+		} else
+			return FALSE;
 	}
 }
 ?>
