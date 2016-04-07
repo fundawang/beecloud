@@ -11,12 +11,14 @@ function beecloud_init() {
 function beecloud_menu() {
 	$items=array();
 	$items['beecloud/offlinepay']=array(
+		'type' => MENU_CALLBACK,
 		'title' => 'Charge',
 		'page callback' => 'drupal_get_form',
 		'page arguments' => array('beecloud_offlinepay_form'),
 		'access callback' => TRUE,
 	);
 	$items['beecloud/webhook']=array(
+		'type' => MENU_CALLBACK,
 		'page callback' => 'beecloud_simple_webhook',
 		'access callback' => 'beecloud_simple_webhook_perm',
 	);
